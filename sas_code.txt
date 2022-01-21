@@ -1,0 +1,117 @@
+#SAS_studio
+
+/*전체데이터 파생변수 생성*/
+data SA133.acc_new;
+set SA133.accident_new;
+if att_car='승용' then car='yes';
+else car='no';/*승용차의 비율이 압도적으로 많았고 사고유형에서 승용차와 다른차들간의 유의한 차이를 파악하기위해 생성*/
+if day='월요일' or day='화요일' or day='수요일' or day='목요일' or day='금요일' then dday='평일';
+else dday='주말';/*주말과 평일의 교통량과 차량이동시간 등 여러가지 차이를 보기위해 생성*/
+if 6<=hour<=9 then hhour='출';
+else if 10<=hour<=16 then hhour='주';
+else if 17<=hour<=20 then hhour='퇴';
+else hhour='야';/*출퇴근 시간의 교통량이 몰리기 때문에 유의한 차이의 파악하기위해 생성*/
+if 2<mon<6 then month='봄';
+else if 5<mon<9 then month='여름';
+else if 8<mon<12 then month='가을';
+else month='겨울';
+if road_type_A='교차로' or road_type_A='단일로';
+if law='미분류' then delete;
+run;
+
+/*나이*/
+/* 가해자 나이 파생변수 */
+data SA133.acc_new1;
+set SA133.acc_new;
+if att_age<20 then age1='10대이하';
+else if 19<att_age<30 then age1='20대';
+else if 29<att_age<40 then age1='30대';
+else if 39<att_age<50 then age1='40대';
+else if 49<att_age<60 then age1='50대';
+else if 59<att_age<70 then age1='60대';
+else if 69<att_age<80 then age1='70대';
+else if 79<att_age<99 then age1='80대이상';
+else if 98<att_age then age1='기타';
+run;
+
+/* 피해자 나이 파생변수 */
+data SA133.acc_new1;
+set SA133.acc_new1;
+if vic_age<20 then age2='10대이하';
+else if 19<vic_age<30 then age2='20대';
+else if 29<vic_age<40 then age2='30대';
+else if 39<vic_age<50 then age2='40대';
+else if 49<vic_age<60 then age2='50대';
+else if 59<vic_age<70 then age2='60대';
+else if 69<vic_age<80 then age2='70대';
+else if 79<vic_age<99 then age2='80대이상';
+else if 98<vic_age then age2='기타';
+run;
+
+/*사고 유형 파생변수 생성한 전체데이터 (type_new)*/
+data soo.acc_new1_t;
+set soo.acc_new1;
+if type='차대차 - 정면충돌' or type='차대차 - 측면직각충돌' or type='차대차 - 측면충돌'  then type_n='차대차-충돌';
+else if type='차대차 - 추돌' or type='차대차 - 추돌 - 진행중' or type='차대차 - 후진중충돌' then type_n='차대차-추돌';
+else if type='차대차 - 기타' then type_n='차대차-기타';
+else if type='차대사람 - 횡단중' then type_n='차대사람-횡단';
+else if type='차대사람 - 기타' or type='차대사람 - 길가장자리구역통행중' or type='차대사람 - 보도통행중' or type='차대사람 - 차도통행중' then type_n='차대사람-통행';
+else type_n='차량단독';
+run;
+
+data soo.acc_new1_t;
+set soo.acc_new1;
+if type='차대차 - 정면충돌' or type='차대차 - 측면직각충돌' or type='차대차 - 측면충돌' or type='차대차 - 후진중충돌' then type_n='차대차-충돌';
+else if type='차대차 - 추돌' or type='차대차 - 추돌 - 진행중' then type_n='차대차-추돌';
+else if type='차대차 - 기타' then type_n='차대차-기타';
+else if type_A='차대사람' then type_n='차대사람';
+else type_n='차량단독';
+run;
+
+
+/* 독립성 검정 */
+PROC FREQ data=SA133.acc_new1;
+TABLE age1*law/ chisq expected stdres crosslist norow nocol nopercent; 
+run;
+
+PROC FREQ data=SA133.acc_new1;
+TABLE age1*road_type_a/ chisq expected stdres crosslist norow nocol nopercent; 
+run;
+
+
+PROC FREQ data=SA133.acc_new1;
+TABLE age1*hhour/ chisq expected stdres crosslist norow nocol nopercent; 
+run;
+
+/* 로지스틱 회귀분석을 위한 파생변수 생성 */
+/*교통사고데이터 사고유형(type_A) 파생변수*/
+data SA133.acc_new1;
+set SA133.acc_new1;
+if type_a='차대차' then type_aa='차대차';
+else type_aa='그 외';
+if age1='기타' then delete;
+run;
+
+/*교통사고데이터 연령(age2) 파생변수2*/
+data SA133.acc_new1;
+set SA133.acc_new1;
+if age1='80대이상' or age1='70대' then age2='노년';
+else if age1='60대' or age1='50대' then age2='장년';
+else if age1='40대' or age1='30대' then age2='중년';
+else if age1='20대' or age1='10대이하' then age2='초년';
+run;
+
+
+/* 이진 로지스틱 회귀분석 실시 */
+ods noproctitle;
+ods graphics / imagemap=on;
+
+proc logistic data=MYCAS.ACC_NEW1 plots=(roc);
+	class contents road_type_A car dday hhour month age2 / param=glm;
+	model type_aa(event='차대차')=contents road_type_A car dday hhour month age2 / 
+		link=logit selection=stepwise slentry=0.05 slstay=0.05 hierarchy=single 
+		technique=fisher;
+run;
+
+
+
